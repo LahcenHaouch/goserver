@@ -5,17 +5,15 @@ import (
 	"net/http"
 )
 
-type apiHandler struct{}
-
-func (apiHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	res.Write([]byte("Hello Lahcen"))
-}
-
 func main() {
-	var serv http.Server
-	serv.Addr = ":8080"
+	const port string = "8080"
 	mux := http.NewServeMux()
-	mux.Handle("/", apiHandler{})
+	serv := http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	mux.Handle("/", http.FileServer(http.Dir(".")))
 
 	fmt.Println("Listening on port:8080")
 	if err := serv.ListenAndServe(); err != nil {
