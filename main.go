@@ -18,7 +18,14 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 func (cfg *apiConfig) countHandler(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(200)
-	res.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileServerHits)))
+	res.Header().Set("Content-Type", "text/html; charset=utf-8")
+	res.Write([]byte(fmt.Sprintf(`
+		<html>
+			<body>
+    			<h1>Welcome, Chirpy Admin</h1>
+       			<p>Chirpy has been visited %d times!</p>
+          	</body>
+        </html>`, cfg.fileServerHits)))
 }
 func (cfg *apiConfig) resetHandler(res http.ResponseWriter, req *http.Request) {
 	cfg.fileServerHits = 0
@@ -42,8 +49,8 @@ func main() {
 
 	mux.Handle("/app/", api.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
-	mux.HandleFunc("GET /api/metrics", api.countHandler)
 	mux.HandleFunc("/api/reset", api.resetHandler)
+	mux.HandleFunc("GET /admin/metrics", api.countHandler)
 
 	fmt.Println("Listening on port:8080")
 	if err := serv.ListenAndServe(); err != nil {
