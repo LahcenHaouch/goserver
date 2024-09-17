@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -39,6 +40,56 @@ func healthzHandler(res http.ResponseWriter, req *http.Request) {
 	res.Write([]byte("OK"))
 }
 
+func respondWithError(body map[string]string, w http.ResponseWriter, status int) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(data)
+}
+
+func handleValidateChirp(w http.ResponseWriter, r *http.Request) {
+	type ValidateChirp struct {
+		Body string `json:"body"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var chirp ValidateChirp
+	error := map[string]string{"error": "Something went wrong"}
+	if err := decoder.Decode(&chirp); err != nil {
+		respondWithError(error, w, 400)
+		return
+	}
+
+	if len(chirp.Body) > 140 {
+		respondWithError(error, w, 400)
+		return
+	}
+
+	body := map[string]bool{"valid": true}
+	data, err := json.Marshal(body)
+
+	if err != nil {
+		data, err := json.Marshal(error)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(500)
+		w.Write(data)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(data)
+}
+
 func main() {
 	api := apiConfig{fileServerHits: 0}
 	mux := http.NewServeMux()
@@ -50,6 +101,7 @@ func main() {
 	mux.Handle("/app/", api.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
 	mux.HandleFunc("/api/reset", api.resetHandler)
+	mux.HandleFunc("POST /api/validate_chirp", handleValidateChirp)
 	mux.HandleFunc("GET /admin/metrics", api.countHandler)
 
 	fmt.Println("Listening on port:8080")
