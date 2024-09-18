@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type apiConfig struct {
@@ -71,23 +72,40 @@ func handleValidateChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := map[string]bool{"valid": true}
+	body := map[string]string{"cleaned_body": removeBadWords(chirp.Body)}
 	data, err := json.Marshal(body)
 
 	if err != nil {
-		data, err := json.Marshal(error)
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(500)
-		w.Write(data)
+		respondWithError(error, w, 500)
 		return
 	}
 
 	w.WriteHeader(200)
 	w.Write(data)
+}
+
+func removeBadWords(body string) string {
+	words := strings.Split(body, " ")
+	result := make([]string, 0)
+
+	for _, word := range words {
+		if isBadWord(word) {
+			result = append(result, "****")
+		} else {
+			result = append(result, word)
+		}
+	}
+
+	return strings.Join(result, " ")
+}
+
+func isBadWord(word string) bool {
+	switch strings.ToLower(word) {
+	case "kerfuffle", "sharbert", "fornax":
+		return true
+	default:
+		return false
+	}
 }
 
 func main() {
