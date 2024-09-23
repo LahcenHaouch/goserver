@@ -2,10 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 )
+
+var id int = 1
 
 type apiConfig struct {
 	fileServerHits int
@@ -41,7 +46,7 @@ func healthzHandler(res http.ResponseWriter, req *http.Request) {
 	res.Write([]byte("OK"))
 }
 
-func respondWithError(body map[string]string, w http.ResponseWriter, status int) {
+func respondWithError(w http.ResponseWriter, body map[string]string, status int) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -49,38 +54,6 @@ func respondWithError(body map[string]string, w http.ResponseWriter, status int)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(data)
-}
-
-func handleValidateChirp(w http.ResponseWriter, r *http.Request) {
-	type ValidateChirp struct {
-		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
-
-	var chirp ValidateChirp
-	error := map[string]string{"error": "Something went wrong"}
-	if err := decoder.Decode(&chirp); err != nil {
-		respondWithError(error, w, 400)
-		return
-	}
-
-	if len(chirp.Body) > 140 {
-		respondWithError(error, w, 400)
-		return
-	}
-
-	body := map[string]string{"cleaned_body": removeBadWords(chirp.Body)}
-	data, err := json.Marshal(body)
-
-	if err != nil {
-		respondWithError(error, w, 500)
-		return
-	}
-
-	w.WriteHeader(200)
 	w.Write(data)
 }
 
@@ -108,6 +81,100 @@ func isBadWord(word string) bool {
 	}
 }
 
+type PostChirp struct {
+	Body string `json:"body"`
+}
+
+type Chirp struct {
+	Id   int    `json:"id"`
+	Body string `json:"body"`
+}
+
+func handleGetChirps(w http.ResponseWriter, r *http.Request) {
+	f, err := os.ReadFile("./database.json")
+	if err != nil {
+		respondWithError(w, map[string]string{"body": "Error opening database.json"}, 500)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(f)
+}
+
+func handleCreateChirp(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var chirp PostChirp
+	error := map[string]string{"error": "Something went wrong"}
+	if err := decoder.Decode(&chirp); err != nil {
+		fmt.Println("error decoding")
+		respondWithError(w, error, 400)
+		return
+	}
+
+	if len(chirp.Body) > 140 {
+		respondWithError(w, error, 400)
+		return
+	}
+
+	if _, err := os.Stat("./database.json"); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Create("./database.json"); err != nil {
+			fmt.Println("error creating")
+			respondWithError(w, error, 500)
+			return
+		}
+	} else if err != nil {
+		fmt.Println("error else if")
+		respondWithError(w, error, 500)
+		return
+	}
+
+	f, err := os.ReadFile("./database.json")
+	if err != nil {
+		fmt.Println("error reading")
+		respondWithError(w, error, 500)
+		return
+	}
+
+	var data []Chirp
+
+	if len(f) > 0 {
+		if err := json.Unmarshal(f, &data); err != nil {
+			fmt.Println("error json unmarshal")
+			log.Fatal(err)
+			respondWithError(w, error, 500)
+			return
+		}
+	}
+
+	newId := id
+	if len(data) > 0 {
+		newId = data[len(data)-1].Id + 1
+	}
+
+	newChirp := Chirp{Id: newId, Body: removeBadWords(chirp.Body)}
+
+	data = append(data, newChirp)
+
+	dt, err := json.Marshal(data)
+	if err != nil {
+		respondWithError(w, error, 500)
+		return
+	}
+	if err := os.WriteFile("./database.json", dt, 0644); err != nil {
+		respondWithError(w, error, 500)
+		return
+	}
+
+	newBody, err := json.Marshal(newChirp)
+	if err != nil {
+		respondWithError(w, error, 500)
+	}
+
+	w.WriteHeader(201)
+	w.Write(newBody)
+}
+
 func main() {
 	api := apiConfig{fileServerHits: 0}
 	mux := http.NewServeMux()
@@ -119,7 +186,8 @@ func main() {
 	mux.Handle("/app/", api.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
 	mux.HandleFunc("/api/reset", api.resetHandler)
-	mux.HandleFunc("POST /api/validate_chirp", handleValidateChirp)
+	mux.HandleFunc("GET /api/chirps", handleGetChirps)
+	mux.HandleFunc("POST /api/chirps", handleCreateChirp)
 	mux.HandleFunc("GET /admin/metrics", api.countHandler)
 
 	fmt.Println("Listening on port:8080")
