@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,12 +9,20 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/LahcenHaouch/goserver/internal/database"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+
+	_ "github.com/lib/pq"
 )
 
 var id int = 1
 
 type apiConfig struct {
 	fileServerHits int
+	database       *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -38,6 +47,49 @@ func (cfg *apiConfig) resetHandler(res http.ResponseWriter, req *http.Request) {
 	cfg.fileServerHits = 0
 	res.WriteHeader(200)
 	res.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileServerHits)))
+}
+
+type CreateUser struct {
+	Email string `json:"email"`
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
+
+func (c *apiConfig) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var rUser CreateUser
+	if err := decoder.Decode(&rUser); err != nil {
+		respondWithError(w, map[string]string{"error": "Invalid request"}, 400)
+		return
+	}
+
+	user, err := c.database.CreateUser(r.Context(), sql.NullString{String: rUser.Email, Valid: true})
+	if err != nil {
+		respondWithError(w, map[string]string{"error": "Error creating user"}, 500)
+		return
+	}
+
+	newUser := User{
+		ID:        user.ID.UUID,
+		CreatedAt: user.CreatedAt.Time,
+		UpdatedAt: user.UpdatedAt.Time,
+		Email:     user.Email.String,
+	}
+
+	body, err := json.Marshal(newUser)
+	if err != nil {
+		respondWithError(w, map[string]string{"error": "Error marshalling body"}, 500)
+	}
+
+	w.WriteHeader(201)
+	w.Write(body)
 }
 
 func healthzHandler(res http.ResponseWriter, req *http.Request) {
@@ -176,7 +228,18 @@ func handleCreateChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	api := apiConfig{fileServerHits: 0}
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+
+	if err != nil {
+		fmt.Println("Error connecting to db: %v", err)
+		return
+	}
+
+	dbQueries := database.New(db)
+	api := apiConfig{fileServerHits: 0, database: dbQueries}
+
 	mux := http.NewServeMux()
 	serv := http.Server{
 		Addr:    ":8080",
@@ -185,9 +248,10 @@ func main() {
 
 	mux.Handle("/app/", api.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
-	mux.HandleFunc("/api/reset", api.resetHandler)
+	mux.HandleFunc("/admin/reset", api.resetHandler)
 	mux.HandleFunc("GET /api/chirps", handleGetChirps)
 	mux.HandleFunc("POST /api/chirps", handleCreateChirp)
+	mux.HandleFunc("POST /api/users", api.handleCreateUser)
 	mux.HandleFunc("GET /admin/metrics", api.countHandler)
 
 	fmt.Println("Listening on port:8080")
