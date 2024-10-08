@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -98,8 +97,11 @@ type PostChirp struct {
 }
 
 type Chirp struct {
-	Id   int    `json:"id"`
-	Body string `json:"body"`
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserId    uuid.UUID `json:"user_id"`
 }
 
 func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
@@ -119,56 +121,44 @@ type NullUUID struct {
 }
 
 func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
-	// [todo]: create chirp in Database
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
 	var chirp PostChirp
-	error := map[string]string{"error": "Something went wrong"}
 	if err := decoder.Decode(&chirp); err != nil {
-		fmt.Println("error decoding")
-		utils.RespondWithError(w, error, 400)
+		utils.RespondWithError(w, map[string]string{"error": "error decoding body"}, 400)
 		return
 	}
 
 	if len(chirp.Body) > 140 {
-		utils.RespondWithError(w, error, 400)
+		utils.RespondWithError(w, map[string]string{"error": "body length > 140"}, 400)
 		return
-	}
-
-	f, err := os.ReadFile("./database.json")
-	if err != nil {
-		fmt.Println("error reading")
-		utils.RespondWithError(w, error, 500)
-		return
-	}
-
-	var data []Chirp
-
-	if len(f) > 0 {
-		if err := json.Unmarshal(f, &data); err != nil {
-			fmt.Println("error json unmarshal")
-			log.Fatal(err)
-			utils.RespondWithError(w, error, 500)
-			return
-		}
 	}
 
 	userId, err := uuid.Parse(chirp.UserId)
 	if err != nil {
-		utils.RespondWithError(w, error, 500)
+		utils.RespondWithError(w, map[string]string{"error": "error parsing user_id"}, 500)
 		return
 	}
 
 	newChirp, err := c.Database.CreateChirp(r.Context(), database.CreateChirpParams{Body: sql.NullString{String: utils.RemoveBadWords(chirp.Body), Valid: true}, UserID: uuid.NullUUID{UUID: userId, Valid: true}})
 	if err != nil {
-		utils.RespondWithError(w, error, 500)
+		utils.RespondWithError(w, map[string]string{"error": "error creating chirp"}, 500)
 		return
 	}
 
-	newBody, err := json.Marshal(newChirp)
+	jsonChirp := Chirp{
+		ID:        newChirp.ID,
+		CreatedAt: newChirp.CreatedAt.Time,
+		UpdatedAt: newChirp.UpdatedAt.Time,
+		Body:      newChirp.Body.String,
+		UserId:    newChirp.UserID.UUID,
+	}
+
+	newBody, err := json.Marshal(jsonChirp)
 	if err != nil {
-		utils.RespondWithError(w, error, 500)
+		utils.RespondWithError(w, map[string]string{"error": "error marshalling response body"}, 500)
+		return
 	}
 
 	w.WriteHeader(201)
