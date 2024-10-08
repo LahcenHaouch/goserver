@@ -115,11 +115,6 @@ func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
 	w.Write(f)
 }
 
-type NullUUID struct {
-	UUID  uuid.UUID
-	Valid bool
-}
-
 func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
