@@ -19,7 +19,7 @@ func main() {
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
-		fmt.Println("Error connecting to db: %v", err)
+		fmt.Println("Error connecting to db: %w", err)
 		return
 	}
 

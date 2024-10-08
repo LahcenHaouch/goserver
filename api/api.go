@@ -3,7 +3,6 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -78,7 +77,7 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newUser := User{
-		ID:        user.ID.UUID,
+		ID:        user.ID,
 		CreatedAt: user.CreatedAt.Time,
 		UpdatedAt: user.UpdatedAt.Time,
 		Email:     user.Email.String,
@@ -94,7 +93,8 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 type PostChirp struct {
-	Body string `json:"body"`
+	Body   string `json:"body"`
+	UserId string `json:"user_id"`
 }
 
 type Chirp struct {
@@ -113,6 +113,11 @@ func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
 	w.Write(f)
 }
 
+type NullUUID struct {
+	UUID  uuid.UUID
+	Valid bool
+}
+
 func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 	// [todo]: create chirp in Database
 	decoder := json.NewDecoder(r.Body)
@@ -128,18 +133,6 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 
 	if len(chirp.Body) > 140 {
 		utils.RespondWithError(w, error, 400)
-		return
-	}
-
-	if _, err := os.Stat("./database.json"); errors.Is(err, os.ErrNotExist) {
-		if _, err := os.Create("./database.json"); err != nil {
-			fmt.Println("error creating")
-			utils.RespondWithError(w, error, 500)
-			return
-		}
-	} else if err != nil {
-		fmt.Println("error else if")
-		utils.RespondWithError(w, error, 500)
 		return
 	}
 
@@ -161,30 +154,23 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// newId := id
-	// if len(data) > 0 {
-	// 	newId = data[len(data)-1].Id + 1
-	// }
+	userId, err := uuid.Parse(chirp.UserId)
+	if err != nil {
+		utils.RespondWithError(w, error, 500)
+		return
+	}
 
-	// newChirp := Chirp{Id: newId, Body: utils.RemoveBadWords(chirp.Body)}
+	newChirp, err := c.Database.CreateChirp(r.Context(), database.CreateChirpParams{Body: sql.NullString{String: utils.RemoveBadWords(chirp.Body), Valid: true}, UserID: uuid.NullUUID{UUID: userId, Valid: true}})
+	if err != nil {
+		utils.RespondWithError(w, error, 500)
+		return
+	}
 
-	// data = append(data, newChirp)
+	newBody, err := json.Marshal(newChirp)
+	if err != nil {
+		utils.RespondWithError(w, error, 500)
+	}
 
-	// dt, err := json.Marshal(data)
-	// if err != nil {
-	// 	utils.RespondWithError(w, error, 500)
-	// 	return
-	// }
-	// if err := os.WriteFile("./database.json", dt, 0644); err != nil {
-	// 	utils.RespondWithError(w, error, 500)
-	// 	return
-	// }
-
-	// newBody, err := json.Marshal(newChirp)
-	// if err != nil {
-	// 	utils.RespondWithError(w, error, 500)
-	// }
-
-	// w.WriteHeader(201)
-	// w.Write(newBody)
+	w.WriteHeader(201)
+	w.Write(newBody)
 }
