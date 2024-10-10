@@ -13,8 +13,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func main() {
+func init() {
 	godotenv.Load()
+}
+
+func main() {
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
 
