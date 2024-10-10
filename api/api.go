@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/LahcenHaouch/goserver/internal/database"
@@ -104,15 +103,35 @@ type Chirp struct {
 	UserId    uuid.UUID `json:"user_id"`
 }
 
+func parseDbChirps(chirps []database.Chirp) []Chirp {
+	var parsed []Chirp
+
+	for _, chirp := range chirps {
+		parsed = append(parsed, Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt.Time,
+			UpdatedAt: chirp.UpdatedAt.Time,
+			Body:      chirp.Body.String,
+			UserId:    chirp.UserID.UUID,
+		})
+	}
+
+	return parsed
+}
+
 func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
-	// [todo]: fetch chirps from Database
-	f, err := os.ReadFile("./database.json")
+	chirps, err := c.Database.GetChirps(r.Context())
 	if err != nil {
-		utils.RespondWithError(w, map[string]string{"body": "Error opening database.json"}, 500)
+		utils.RespondWithError(w, map[string]string{"error": "error fetching chirps from database"}, 500)
+	}
+
+	body, err := json.Marshal(parseDbChirps(chirps))
+	if err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "error converting chirps to []byte"}, 500)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(f)
+	w.Write(body)
 }
 
 func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
