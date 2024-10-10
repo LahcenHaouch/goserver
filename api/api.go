@@ -103,17 +103,21 @@ type Chirp struct {
 	UserId    uuid.UUID `json:"user_id"`
 }
 
+func parseDbChirp(chirp database.Chirp) Chirp {
+	return Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt.Time,
+		UpdatedAt: chirp.UpdatedAt.Time,
+		Body:      chirp.Body.String,
+		UserId:    chirp.UserID.UUID,
+	}
+}
+
 func parseDbChirps(chirps []database.Chirp) []Chirp {
 	var parsed []Chirp
 
 	for _, chirp := range chirps {
-		parsed = append(parsed, Chirp{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt.Time,
-			UpdatedAt: chirp.UpdatedAt.Time,
-			Body:      chirp.Body.String,
-			UserId:    chirp.UserID.UUID,
-		})
+		parsed = append(parsed, parseDbChirp(chirp))
 	}
 
 	return parsed
@@ -123,11 +127,35 @@ func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
 	chirps, err := c.Database.GetChirps(r.Context())
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "error fetching chirps from database"}, 500)
+		return
 	}
 
 	body, err := json.Marshal(parseDbChirps(chirps))
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "error converting chirps to []byte"}, 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
+}
+
+func (c *ApiConfig) HandleGetChirp(w http.ResponseWriter, r *http.Request) {
+	pathChirpId := r.PathValue("chirpId")
+	chirpId, err := uuid.Parse(pathChirpId)
+	if err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "error parsing chirp id"}, 400)
+	}
+
+	dbChirp, err := c.Database.GetChirp(r.Context(), chirpId)
+	if err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "error fetching chirp"}, 500)
+	}
+	chirp := parseDbChirp(dbChirp)
+
+	body, err := json.Marshal(chirp)
+	if err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "error parsing chirp"}, 500)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
