@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpId}", api.HandleGetChirp)
 	mux.HandleFunc("POST /api/chirps", api.HandleCreateChirp)
 	mux.HandleFunc("POST /api/users", api.HandleCreateUser)
+	mux.HandleFunc("POST /api/login", api.HandleLogin)
 	mux.HandleFunc("GET /admin/metrics", api.CountHandler)
 
 	fmt.Println("Listening on port:8080")

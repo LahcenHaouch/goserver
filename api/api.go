@@ -92,6 +92,7 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(newUser)
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "Error marshalling body"}, 500)
+		return
 	}
 
 	w.WriteHeader(201)
@@ -212,5 +213,48 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(201)
+	w.Write(newBody)
+}
+
+type Login struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	body := r.Body
+	defer r.Body.Close()
+
+	var login Login
+	if err := json.NewDecoder(body).Decode(&login); err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "Error parsing login data"}, 500)
+		return
+	}
+
+	user, err := c.Database.GetUser(r.Context(), sql.NullString{String: login.Email, Valid: true})
+	if err != nil {
+		http.Error(w, "Incorrect email or password", 401)
+		return
+	}
+
+	if err = auth.CheckPasswordHash(login.Password, user.HashedPassword); err != nil {
+		http.Error(w, "Incorrect email or password", 401)
+		return
+	}
+
+	u := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt.Time,
+		UpdatedAt: user.UpdatedAt.Time,
+		Email:     user.Email.String,
+	}
+
+	newBody, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error marshalling user", 500)
+		return
+	}
+
+	w.WriteHeader(200)
 	w.Write(newBody)
 }
