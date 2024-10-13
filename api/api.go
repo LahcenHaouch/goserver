@@ -16,6 +16,7 @@ import (
 type ApiConfig struct {
 	FileServerHits int
 	Database       *database.Queries
+	TokenSecret    string
 }
 
 func (a ApiConfig) HealthzHandler(res http.ResponseWriter, req *http.Request) {
@@ -92,6 +93,7 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(newUser)
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "Error marshalling body"}, 500)
+		return
 	}
 
 	w.WriteHeader(201)
@@ -213,4 +215,67 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(201)
 	w.Write(newBody)
+}
+
+type Login struct {
+	Email            string         `json:"email"`
+	Password         string         `json:"password"`
+	ExpiresInSeconds *time.Duration `json:"expires_in_seconds"`
+}
+
+func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	type newBody struct {
+		User
+		Token string `json:"token"`
+	}
+
+	body := r.Body
+	defer r.Body.Close()
+
+	var login Login
+	if err := json.NewDecoder(body).Decode(&login); err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "Error parsing login data"}, 500)
+		return
+	}
+
+	user, err := c.Database.GetUser(r.Context(), sql.NullString{String: login.Email, Valid: true})
+	if err != nil {
+		http.Error(w, "Incorrect email or password", 401)
+		return
+	}
+
+	if err = auth.CheckPasswordHash(login.Password, user.HashedPassword); err != nil {
+		http.Error(w, "Incorrect email or password", 401)
+		return
+	}
+
+	expiresIn := login.ExpiresInSeconds
+	if expiresIn == nil || *expiresIn > time.Hour {
+		*expiresIn = time.Hour
+	}
+
+	token, err := auth.MakeJWT(user.ID, c.TokenSecret, *expiresIn)
+	if err != nil {
+		http.Error(w, "Error generating jwt token", 500)
+	}
+
+	u := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt.Time,
+		UpdatedAt: user.UpdatedAt.Time,
+		Email:     user.Email.String,
+	}
+	resp := newBody{
+		User:  u,
+		Token: token,
+	}
+
+	bodyToSend, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Error marshalling user", 500)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(bodyToSend)
 }

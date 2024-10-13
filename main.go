@@ -19,6 +19,7 @@ func init() {
 
 func main() {
 	dbURL := os.Getenv("DB_URL")
+	tokenSecret := os.Getenv("TOKEN_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
@@ -27,7 +28,7 @@ func main() {
 	}
 
 	dbQueries := database.New(db)
-	api := api.ApiConfig{FileServerHits: 0, Database: dbQueries}
+	api := api.ApiConfig{FileServerHits: 0, Database: dbQueries, TokenSecret: tokenSecret}
 
 	mux := http.NewServeMux()
 	serv := http.Server{
@@ -42,6 +43,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpId}", api.HandleGetChirp)
 	mux.HandleFunc("POST /api/chirps", api.HandleCreateChirp)
 	mux.HandleFunc("POST /api/users", api.HandleCreateUser)
+	mux.HandleFunc("POST /api/login", api.HandleLogin)
 	mux.HandleFunc("GET /admin/metrics", api.CountHandler)
 
 	fmt.Println("Listening on port:8080")
