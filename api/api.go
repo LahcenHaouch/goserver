@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/LahcenHaouch/goserver/internal/auth"
 	"github.com/LahcenHaouch/goserver/internal/database"
 	"github.com/LahcenHaouch/goserver/utils"
 	"github.com/google/uuid"
@@ -48,7 +49,8 @@ func (cfg *ApiConfig) ResetHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 type CreateUser struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type User struct {
@@ -68,7 +70,13 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.Database.CreateUser(r.Context(), sql.NullString{String: rUser.Email, Valid: true})
+	hashedPassword, err := auth.HashPassword(rUser.Password)
+	if err != nil {
+		utils.RespondWithError(w, map[string]string{"error": "Error hashing password"}, 500)
+		return
+	}
+
+	user, err := c.Database.CreateUser(r.Context(), database.CreateUserParams{Email: sql.NullString{String: rUser.Email, Valid: true}, HashedPassword: hashedPassword})
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "Error creating user"}, 500)
 		return
