@@ -249,12 +249,12 @@ func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresIn := login.ExpiresInSeconds
-	if expiresIn == nil || *expiresIn > time.Hour {
-		*expiresIn = time.Hour
+	expiresIn := time.Hour
+	if login.ExpiresInSeconds != nil && *login.ExpiresInSeconds <= time.Hour {
+		expiresIn = *login.ExpiresInSeconds
 	}
 
-	token, err := auth.MakeJWT(user.ID, c.TokenSecret, *expiresIn)
+	token, err := auth.MakeJWT(user.ID, c.TokenSecret, expiresIn)
 	if err != nil {
 		http.Error(w, "Error generating jwt token", 500)
 	}

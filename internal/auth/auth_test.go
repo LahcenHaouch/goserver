@@ -25,3 +25,5 @@ func TestValidateJWT(t *testing.T) {
 		t.Fatalf("token not valid")
 	}
 }
+
+// [todo] add test case for expired tokens
