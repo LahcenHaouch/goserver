@@ -101,8 +101,7 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 type PostChirp struct {
-	Body   string `json:"body"`
-	UserId string `json:"user_id"`
+	Body string `json:"body"`
 }
 
 type Chirp struct {
@@ -176,6 +175,16 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "401 Unauthorized", 401)
+	}
+
+	userId, err := auth.ValidateJWT(token, c.TokenSecret)
+	if err != nil {
+		http.Error(w, "401 Unauthorized", 401)
+	}
+
 	var chirp PostChirp
 	if err := decoder.Decode(&chirp); err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "error decoding body"}, 400)
@@ -184,12 +193,6 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 
 	if len(chirp.Body) > 140 {
 		utils.RespondWithError(w, map[string]string{"error": "body length > 140"}, 400)
-		return
-	}
-
-	userId, err := uuid.Parse(chirp.UserId)
-	if err != nil {
-		utils.RespondWithError(w, map[string]string{"error": "error parsing user_id"}, 500)
 		return
 	}
 
