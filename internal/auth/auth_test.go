@@ -26,4 +26,10 @@ func TestValidateJWT(t *testing.T) {
 	}
 }
 
-// [todo] add test case for expired tokens
+func TestValidateJWTExpiredToken(t *testing.T) {
+	// [todo]: write test
+}
+
+func TestValidateJWTWrongSecret(t *testing.T) {
+	// [todo]: write test
+}

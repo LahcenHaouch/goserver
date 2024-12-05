@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -154,6 +155,7 @@ func (c *ApiConfig) HandleGetChirp(w http.ResponseWriter, r *http.Request) {
 	chirpId, err := uuid.Parse(pathChirpId)
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "error parsing chirp id"}, 400)
+		return
 	}
 
 	dbChirp, err := c.Database.GetChirp(r.Context(), chirpId)
@@ -165,6 +167,7 @@ func (c *ApiConfig) HandleGetChirp(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(chirp)
 	if err != nil {
 		utils.RespondWithError(w, map[string]string{"error": "error parsing chirp"}, 500)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -178,11 +181,15 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		http.Error(w, "401 Unauthorized", 401)
+		log.Println("184")
+		return
 	}
 
 	userId, err := auth.ValidateJWT(token, c.TokenSecret)
 	if err != nil {
 		http.Error(w, "401 Unauthorized", 401)
+		log.Println("190")
+		return
 	}
 
 	var chirp PostChirp
@@ -221,15 +228,15 @@ func (c *ApiConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 type Login struct {
-	Email            string         `json:"email"`
-	Password         string         `json:"password"`
-	ExpiresInSeconds *time.Duration `json:"expires_in_seconds"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	type newBody struct {
 		User
-		Token string `json:"token"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	body := r.Body
@@ -252,14 +259,10 @@ func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresIn := time.Hour
-	if login.ExpiresInSeconds != nil && *login.ExpiresInSeconds <= time.Hour {
-		expiresIn = *login.ExpiresInSeconds
-	}
-
-	token, err := auth.MakeJWT(user.ID, c.TokenSecret, expiresIn)
+	token, err := auth.MakeJWT(user.ID, c.TokenSecret, time.Hour)
 	if err != nil {
 		http.Error(w, "Error generating jwt token", 500)
+		return
 	}
 
 	u := User{
@@ -268,9 +271,28 @@ func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: user.UpdatedAt.Time,
 		Email:     user.Email.String,
 	}
+
+	refreshTokenStr, err := auth.MakeRefreshToken()
+	if err != nil {
+		http.Error(w, "error creating refresh token", 500)
+		return
+	}
+
+	now := time.Now()
+	refreshToken, err := c.Database.CreateRefreshToken(
+		r.Context(), database.CreateRefreshTokenParams{
+			Token:     refreshTokenStr,
+			UserID:    uuid.NullUUID{UUID: u.ID, Valid: true},
+			ExpiresAt: sql.NullTime{Time: now.Add(time.Hour * 24 * 60), Valid: true}})
+
+	if err != nil {
+		http.Error(w, "error saving refresh token", 500)
+		return
+	}
 	resp := newBody{
-		User:  u,
-		Token: token,
+		User:         u,
+		Token:        token,
+		RefreshToken: refreshToken.Token,
 	}
 
 	bodyToSend, err := json.Marshal(resp)
@@ -281,4 +303,70 @@ func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(200)
 	w.Write(bodyToSend)
+}
+
+func (c *ApiConfig) HandleRefresh(w http.ResponseWriter, r *http.Request) {
+	tokenStr, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "error reading token", 401)
+	}
+
+	token, err := c.Database.GetRefreshToken(r.Context(), tokenStr)
+	if err != nil {
+		http.Error(w, "error retrieving token", 401)
+		return
+	}
+
+	if token.RevokedAt.Valid {
+		http.Error(w, "error retrieving token", 401)
+		return
+	}
+
+	accessToken, err := auth.MakeJWT(token.UserID.UUID, c.TokenSecret, time.Hour)
+	if err != nil {
+		http.Error(w, "error creating access token", 500)
+		return
+	}
+
+	m := map[string]string{
+		"token": accessToken,
+	}
+	body, err := json.Marshal(m)
+	if err != nil {
+		http.Error(w, "error marshalling body", 500)
+		return
+	}
+
+	w.Write(body)
+	w.WriteHeader(200)
+}
+
+func (c *ApiConfig) HandleRevoke(w http.ResponseWriter, r *http.Request) {
+	tokenStr, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "error token string", 401)
+		return
+	}
+
+	_, err = c.Database.GetRefreshToken(r.Context(), tokenStr)
+	if err != nil {
+		http.Error(w, "error retrieving token from db", 401)
+		return
+	}
+
+	now := time.Now()
+	nullTime := sql.NullTime{
+		Time:  now,
+		Valid: true,
+	}
+	err = c.Database.UpdateRefreshToken(r.Context(), database.UpdateRefreshTokenParams{
+		Token:     tokenStr,
+		UpdatedAt: nullTime,
+		RevokedAt: nullTime,
+	})
+	if err != nil {
+		http.Error(w, "error udpdating token", 500)
+		return
+	}
+	w.WriteHeader(204)
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -23,7 +23,7 @@ func main() {
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
-		fmt.Println("Error connecting to db: %w", err)
+		log.Printf("error connecting to db: %q", err)
 		return
 	}
 
@@ -44,10 +44,12 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", api.HandleCreateChirp)
 	mux.HandleFunc("POST /api/users", api.HandleCreateUser)
 	mux.HandleFunc("POST /api/login", api.HandleLogin)
+	mux.HandleFunc("POST /api/refresh", api.HandleRefresh)
+	mux.HandleFunc("POST /api/revoke", api.HandleRevoke)
 	mux.HandleFunc("GET /admin/metrics", api.CountHandler)
 
-	fmt.Println("Listening on port:8080")
+	log.Println("listening on port:", serv.Addr[1:])
 	if err := serv.ListenAndServe(); err != nil {
-		fmt.Println("Error 500: %w", err)
+		log.Printf("error starting server: %q", err)
 	}
 }
