@@ -370,3 +370,53 @@ func (c *ApiConfig) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
+
+func (c *ApiConfig) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	tokenStr, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(tokenStr, c.TokenSecret)
+	if err != nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+
+	defer r.Body.Close()
+
+	var user CreateUser
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		http.Error(w, "error parsing user information", 400)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(user.Password)
+	if err != nil {
+		http.Error(w, "Internal server error", 500)
+		return
+	}
+
+	updatedUser, err := c.Database.UpdateUser(r.Context(), database.UpdateUserParams{
+		ID:             userId,
+		Email:          sql.NullString{String: user.Email, Valid: true},
+		HashedPassword: hashedPassword,
+	})
+	if err != nil {
+		http.Error(w, "Internal server error", 500)
+		return
+	}
+
+	body, err := json.Marshal(User{
+		ID:        userId,
+		Email:     updatedUser.Email.String,
+		CreatedAt: updatedUser.CreatedAt.Time,
+		UpdatedAt: updatedUser.UpdatedAt.Time,
+	})
+	if err != nil {
+		http.Error(w, "Internal server error", 500)
+	}
+	w.Write(body)
+	w.WriteHeader(200)
+}
