@@ -160,7 +160,8 @@ func (c *ApiConfig) HandleGetChirp(w http.ResponseWriter, r *http.Request) {
 
 	dbChirp, err := c.Database.GetChirp(r.Context(), chirpId)
 	if err != nil {
-		utils.RespondWithError(w, map[string]string{"error": "error fetching chirp"}, 500)
+		utils.RespondWithError(w, map[string]string{"error": "error fetching chirp"}, 404)
+		return
 	}
 	chirp := parseDbChirp(dbChirp)
 
@@ -419,4 +420,44 @@ func (c *ApiConfig) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(body)
 	w.WriteHeader(200)
+}
+
+func (c *ApiConfig) HandleDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	tokenStr, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(tokenStr, c.TokenSecret)
+	if err != nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+
+	chirpIdP := r.PathValue("chirpId")
+	chirpId, err := uuid.Parse(chirpIdP)
+	if err != nil {
+		http.Error(w, "bad request", 400)
+		return
+	}
+
+	chirp, err := c.Database.GetChirp(r.Context(), chirpId)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+
+	if chirp.UserID.UUID != userId {
+		http.Error(w, "unauthorized", 403)
+		return
+	}
+
+	err = c.Database.DeleteChirp(r.Context(), chirpId)
+	if err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+
+	w.WriteHeader(204)
 }

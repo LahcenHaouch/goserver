@@ -4,10 +4,11 @@ INSERT INTO chirps(id, created_at, updated_at, body, user_id) VALUES (
 )
 returning *;
 
-
 -- name: GetChirps :many
 SELECT * from chirps ORDER BY created_at ASC;
 
-
 -- name: GetChirp :one
 SELECT * from chirps WHERE id = $1;
+
+-- name: DeleteChirp :exec
+DELETE FROM chirps WHERE id = $1;

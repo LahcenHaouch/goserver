@@ -48,6 +48,7 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", api.HandleRefresh)
 	mux.HandleFunc("POST /api/revoke", api.HandleRevoke)
 	mux.HandleFunc("GET /admin/metrics", api.CountHandler)
+	mux.HandleFunc("DELETE /api/chirps/{chirpId}", api.HandleDeleteChirp)
 
 	log.Println("listening on port:", serv.Addr[1:])
 	if err := serv.ListenAndServe(); err != nil {
