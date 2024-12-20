@@ -56,10 +56,11 @@ type CreateUser struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +86,11 @@ func (c *ApiConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newUser := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt.Time,
-		UpdatedAt: user.UpdatedAt.Time,
-		Email:     user.Email.String,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt.Time,
+		UpdatedAt:   user.UpdatedAt.Time,
+		Email:       user.Email.String,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	body, err := json.Marshal(newUser)
@@ -267,10 +269,11 @@ func (c *ApiConfig) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt.Time,
-		UpdatedAt: user.UpdatedAt.Time,
-		Email:     user.Email.String,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt.Time,
+		UpdatedAt:   user.UpdatedAt.Time,
+		Email:       user.Email.String,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	refreshTokenStr, err := auth.MakeRefreshToken()
@@ -460,4 +463,37 @@ func (c *ApiConfig) HandleDeleteChirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(204)
+}
+
+func (c *ApiConfig) HandleWebHook(w http.ResponseWriter, r *http.Request) {
+	type WebHookData struct {
+		UserId uuid.UUID `json:"user_id"`
+	}
+	type WebHook struct {
+		Event string      `json:"event"`
+		Data  WebHookData `json:"data"`
+	}
+
+	body := r.Body
+	defer r.Body.Close()
+
+	var webHook WebHook
+
+	if err := json.NewDecoder(body).Decode(&webHook); err != nil {
+		http.Error(w, "internal server error", 500)
+		return
+	}
+
+	if webHook.Event != "user.upgraded" {
+		http.Error(w, "unhandled event", 204)
+		return
+	}
+
+	if err := c.Database.UpgradeUserMembership(r.Context(), webHook.Data.UserId); err != nil {
+		http.Error(w, "error updating user", 404)
+		return
+	}
+
+	w.WriteHeader(204)
+	return
 }
