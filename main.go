@@ -20,6 +20,7 @@ func init() {
 func main() {
 	dbURL := os.Getenv("DB_URL")
 	tokenSecret := os.Getenv("TOKEN_SECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
@@ -28,7 +29,7 @@ func main() {
 	}
 
 	dbQueries := database.New(db)
-	api := api.ApiConfig{FileServerHits: 0, Database: dbQueries, TokenSecret: tokenSecret}
+	api := api.ApiConfig{FileServerHits: 0, Database: dbQueries, TokenSecret: tokenSecret, PolkaKey: polkaKey}
 
 	mux := http.NewServeMux()
 	serv := http.Server{

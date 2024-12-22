@@ -18,6 +18,7 @@ type ApiConfig struct {
 	FileServerHits int
 	Database       *database.Queries
 	TokenSecret    string
+	PolkaKey       string
 }
 
 func (a ApiConfig) HealthzHandler(res http.ResponseWriter, req *http.Request) {
@@ -466,6 +467,12 @@ func (c *ApiConfig) HandleDeleteChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *ApiConfig) HandleWebHook(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil || apiKey != c.PolkaKey {
+		http.Error(w, "invalid api key", 401)
+		return
+	}
+
 	type WebHookData struct {
 		UserId uuid.UUID `json:"user_id"`
 	}

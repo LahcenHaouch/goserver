@@ -70,3 +70,14 @@ func MakeRefreshToken() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+func GetAPIKey(headers http.Header) (string, error) {
+	header := headers.Get("Authorization")
+	headerArr := strings.Split(header, " ")
+
+	if len(headerArr) != 2 {
+		return "", errors.New("no api key found")
+	}
+
+	return headerArr[1], nil
+}
