@@ -137,10 +137,41 @@ func parseDbChirps(chirps []database.Chirp) []Chirp {
 }
 
 func (c *ApiConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := c.Database.GetChirps(r.Context())
-	if err != nil {
-		utils.RespondWithError(w, map[string]string{"error": "error fetching chirps from database"}, 500)
-		return
+	authorId := r.URL.Query().Get("author_id")
+	sort := r.URL.Query().Get("sort")
+
+	var chirps []database.Chirp
+
+	if len(authorId) > 0 {
+		userId, err := uuid.Parse(authorId)
+		if err != nil {
+			http.Error(w, "error parsing author_id", 500)
+			return
+		}
+		if sort == "desc" {
+			chirps, err = c.Database.GetChirpsByAuthorIdDESC(r.Context(), uuid.NullUUID{
+				UUID: userId, Valid: true,
+			})
+		} else {
+			chirps, err = c.Database.GetChirpsByAuthorId(r.Context(), uuid.NullUUID{UUID: userId, Valid: true})
+		}
+		if err != nil {
+			utils.RespondWithError(w, map[string]string{"error": "error fetching chirps from database"}, 500)
+			return
+		}
+	} else {
+		var err error
+
+		if sort == "desc" {
+			chirps, err = c.Database.GetChirpsDESC(r.Context())
+		} else {
+			chirps, err = c.Database.GetChirps(r.Context())
+		}
+
+		if err != nil {
+			utils.RespondWithError(w, map[string]string{"error": "error fetching chirps from database"}, 500)
+			return
+		}
 	}
 
 	body, err := json.Marshal(parseDbChirps(chirps))
